@@ -6,7 +6,7 @@ from utils.common_utils import (
     high_pass_filter,
     hanning_filter,
 )
-from ecgdetectors import Detectors
+from biosppy.signals import ecg as Detectors
 import time
 
 
@@ -77,8 +77,9 @@ class DataMaker:
         sampling_freq: float,
     ) -> list[ECGSegment]:
         ecg_segments = list()
-        detector = Detectors(sampling_frequency=sampling_freq)
-        r_peaks = detector.pan_tompkins_detector(signal)
+        # Perform R-peak detection using engzee_segmenter
+        detector = Detectors.engzee_segmenter(signal, sampling_freq)
+        r_peaks = detector['rpeaks']
         for i in range(0, len(r_peaks)):
             segment_start = max(r_peaks[i] - before_peak, 0)
             segment_end = min(r_peaks[i] + after_peak, len(signal))
@@ -116,11 +117,16 @@ class DataMaker:
 
     def perform_segmentation(self, symbols: list[str]) -> list[ECGSegment]:
         segments = []
+
         for record in self.__records:
+            # Get the lead signal for the current record
             signal = DataMaker.get_lead_signal(record, self.__signal_name)
-            if not len(signal) > 0:
+
+            if len(signal) == 0:
                 print(f"No {self.__signal_name} for {record.record_name()}")
                 continue
+
+            # Clean the signal
             clean_signal = DataMaker.clean_signal(
                 signal,
                 self.__powerline_freq,
@@ -129,6 +135,8 @@ class DataMaker:
                 self.__sampling_freq,
                 self.__error,
             )
+
+            # Segment the cleaned signal
             segments_for_record = DataMaker.segment_signal(
                 self.__before_peak,
                 self.__after_peak,
@@ -136,11 +144,16 @@ class DataMaker:
                 record.record_name(),
                 self.__sampling_freq,
             )
+
+            # Add target classes
             DataMaker.add_target_classes(
                 record.annotations_present(),
                 record.annotation_indexes(),
                 segments_for_record,
                 record.record_name(),
             )
+
+            # Extend the segments list
             segments.extend(segments_for_record)
+
         return segments
